@@ -19,7 +19,7 @@ h1{font-size:22px;margin:0 0 4px}.sub,label,.k,.foot{color:var(--muted)}.sub{fon
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.full{grid-column:1/-1}label{font-size:12px}
 input{width:100%;font-size:20px;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--text);margin-top:6px}
 .hero{text-align:center}.hero .v{font-size:56px;font-weight:800;line-height:1}.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
-.stat{background:var(--bg);border-radius:14px;padding:12px}.stat .k{font-size:11px}.stat .v{font-size:18px;font-weight:700;margin-top:4px}
+.stat{background:var(--bg);border-radius:14px;padding:12px}.stat .k{font-size:11px}.stat .v{font-size:18px;font-weight:700;margin-top:4px}.profit{color:var(--ok)}
 .note{font-size:13px;line-height:1.55;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px}.ok{color:var(--ok)}.warn{color:var(--warn)}
 table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:10px 4px;border-bottom:1px solid var(--line)}th{text-align:left;color:var(--muted)}
 td:nth-child(2),td:nth-child(3),th:nth-child(2),th:nth-child(3){text-align:right}
@@ -29,7 +29,7 @@ button.reset{width:100%;min-height:46px;border:0;border-radius:12px;font-size:15
 <body>
 <main>
 <h1>GOLD リスク計算</h1>
-<div class="sub">ロング／ショートを選び、損切り位置から適正ロットを逆算</div>
+<div class="sub">損切り・利確位置から適正ロット、想定損失、想定利益を計算</div>
 
 <section class="card">
 <div class="side-switch">
@@ -39,6 +39,7 @@ button.reset{width:100%;min-height:46px;border:0;border-radius:12px;font-size:15
 <div class="grid">
 <div class="full"><label>エントリー価格 (USD)<input id="entry" type="number" step="0.1" inputmode="decimal" value="4357"></label></div>
 <div class="full"><label>損切り価格 (USD)<input id="stop" type="number" step="0.1" inputmode="decimal" value="4388"></label></div>
+<div class="full"><label>利確目標価格 (USD)<input id="target" type="number" step="0.1" inputmode="decimal" value="4300"></label></div>
 <div><label>USD/JPY<input id="fx" type="number" step="0.01" inputmode="decimal" value="160"></label></div>
 <div><label>許容損失 (円)<input id="risk" type="number" step="1000" inputmode="numeric" value="10000"></label></div>
 <div class="full"><label>1枚あたり契約倍率<input id="mult" type="number" step="0.01" inputmode="decimal" value="1"></label></div>
@@ -48,99 +49,72 @@ button.reset{width:100%;min-height:46px;border:0;border-radius:12px;font-size:15
 <section class="card">
 <div class="hero"><div class="k">適正ロット上限</div><div class="v" id="lots">2</div><div>枚</div></div>
 <div class="stats">
-<div class="stat"><div class="k">損切り値幅</div><div class="v" id="distance">$31.0</div></div>
-<div class="stat"><div class="k">1枚あたり損失</div><div class="v" id="perLot">4,960円</div></div>
-<div class="stat"><div class="k">選択ロットの損失</div><div class="v" id="actual">9,920円</div></div>
+<div class="stat"><div class="k">損切り値幅</div><div class="v" id="stopDistance">$31.0</div></div>
+<div class="stat"><div class="k">利確値幅</div><div class="v" id="targetDistance">$57.0</div></div>
+<div class="stat"><div class="k">1枚あたり損失</div><div class="v" id="perLotLoss">4,960円</div></div>
+<div class="stat"><div class="k">1枚あたり利益</div><div class="v profit" id="perLotProfit">9,120円</div></div>
+<div class="stat"><div class="k">想定損失</div><div class="v" id="actualLoss">9,920円</div></div>
+<div class="stat"><div class="k">想定利益</div><div class="v profit" id="actualProfit">18,240円</div></div>
+<div class="stat"><div class="k">リスクリワード</div><div class="v" id="rr">1 : 1.84</div></div>
 <div class="stat"><div class="k">方向</div><div class="v" id="side">ショート</div></div>
 </div>
-<div class="note" id="message">チャートで決めた損切り位置は動かさず、ロット側で調整します。</div>
+<div class="note" id="message">損切り位置を動かさず、ロットでリスク調整。利確目標から想定利益も確認できます。</div>
 </section>
 
 <section class="card">
-<strong>1〜10枚の想定損失</strong>
-<table><thead><tr><th>枚数</th><th>想定損失</th><th>判定</th></tr></thead><tbody id="rows"></tbody></table>
+<strong>1〜10枚の想定損失 / 想定利益</strong>
+<table><thead><tr><th>枚数</th><th>損失</th><th>利益</th></tr></thead><tbody id="rows"></tbody></table>
 <button id="reset" class="reset" type="button">初期値に戻す</button>
 </section>
 
 <div class="foot">
-計算式：許容損失 ÷（損切り値幅 × USD/JPY × 契約倍率）。<br>
-ロングでは損切り価格はエントリーより下、ショートでは上にあることをチェックします。<br>
-スプレッド、スリッページ、調整金は含みません。契約倍率は利用中の商品仕様を確認してください。
+損失：損切り値幅 × USD/JPY × 契約倍率 × 枚数。<br>
+利益：利確値幅 × USD/JPY × 契約倍率 × 枚数。<br>
+ロングは損切りがエントリーより下・利確が上、ショートは損切りが上・利確が下で判定します。<br>
+スプレッド、スリッページ、調整金は含みません。
 </div>
 </main>
 
 <script>
 (()=>{
-const q=id=>document.getElementById(id);
-const fmt=new Intl.NumberFormat("ja-JP",{maximumFractionDigits:0});
+const q=id=>document.getElementById(id), fmt=new Intl.NumberFormat("ja-JP",{maximumFractionDigits:0});
 let mode="short";
-
+function val(id){const n=Number(q(id).value);return Number.isFinite(n)?n:0}
 function setMode(next){
  mode=next;
  q("longBtn").classList.toggle("active",mode==="long");
  q("shortBtn").classList.toggle("active",mode==="short");
+ const e=val("entry")||4357;
+ if(mode==="long"){q("stop").value=(e-31).toFixed(1);q("target").value=(e+57).toFixed(1)}
+ else{q("stop").value=(e+31).toFixed(1);q("target").value=(e-57).toFixed(1)}
  render();
 }
-function val(id){const n=Number(q(id).value);return Number.isFinite(n)?n:0}
-
-function render(){
- const entry=val("entry"),stop=val("stop"),fx=val("fx"),risk=val("risk"),mult=val("mult");
- const d=Math.abs(entry-stop);
- const directionValid=mode==="long" ? stop<entry : stop>entry;
- q("side").textContent=mode==="long"?"ロング":"ショート";
-
- if(entry<=0||stop<=0||fx<=0||risk<=0||mult<=0||d<=0){
-  ["lots","distance","perLot","actual"].forEach(x=>q(x).textContent="—");
-  q("rows").innerHTML="";
-  q("message").textContent="0より大きい有効な数字を入力してください。";
-  q("message").className="note warn";
-  return;
- }
-
- q("distance").textContent="$"+d.toFixed(1);
-
- if(!directionValid){
-  ["lots","perLot","actual"].forEach(x=>q(x).textContent="—");
-  q("rows").innerHTML="";
-  q("message").textContent=mode==="long"
-   ?"ロングでは、損切り価格はエントリー価格より下に設定してください。"
-   :"ショートでは、損切り価格はエントリー価格より上に設定してください。";
-  q("message").className="note warn";
-  return;
- }
-
- const per=d*fx*mult;
- const lots=Math.floor(risk/per);
- const actual=lots*per;
-
- q("lots").textContent=String(Math.max(0,lots));
- q("perLot").textContent=fmt.format(per)+"円";
- q("actual").textContent=fmt.format(actual)+"円";
-
- if(lots<1){
-  q("message").textContent="1枚でも許容損失を超えます。損切り位置を無理に近づけず、見送りや資金配分を再検討してください。";
-  q("message").className="note warn";
- }else{
-  q("message").textContent=`最大 ${lots}枚。${lots+1}枚では約${fmt.format((lots+1)*per)}円となり、許容損失を超えます。`;
-  q("message").className="note ok";
- }
-
- let rows="";
- for(let i=1;i<=10;i++){
-  const loss=i*per,ok=loss<=risk;
-  rows+=`<tr><td>${i}枚</td><td>${fmt.format(loss)}円</td><td class="${ok?"ok":"warn"}">${ok?"範囲内":"超過"}</td></tr>`;
- }
- q("rows").innerHTML=rows;
+function clearResult(msg){
+ ["lots","perLotLoss","perLotProfit","actualLoss","actualProfit","rr"].forEach(x=>q(x).textContent="—");
+ q("rows").innerHTML="";q("message").textContent=msg;q("message").className="note warn";
 }
-
-q("longBtn").addEventListener("click",()=>setMode("long"));
-q("shortBtn").addEventListener("click",()=>setMode("short"));
-["entry","stop","fx","risk","mult"].forEach(id=>q(id).addEventListener("input",render));
-q("reset").addEventListener("click",()=>{
- mode="short";
- q("entry").value=4357;q("stop").value=4388;q("fx").value=160;q("risk").value=10000;q("mult").value=1;
- q("longBtn").classList.remove("active");q("shortBtn").classList.add("active");render();
-});
+function render(){
+ const entry=val("entry"),stop=val("stop"),target=val("target"),fx=val("fx"),risk=val("risk"),mult=val("mult");
+ const stopD=Math.abs(entry-stop), targetD=Math.abs(target-entry);
+ q("side").textContent=mode==="long"?"ロング":"ショート";
+ q("stopDistance").textContent=stopD>0?"$"+stopD.toFixed(1):"—";
+ q("targetDistance").textContent=targetD>0?"$"+targetD.toFixed(1):"—";
+ if(entry<=0||stop<=0||target<=0||fx<=0||risk<=0||mult<=0||stopD<=0||targetD<=0){clearResult("0より大きい有効な数字を入力してください。");return}
+ const stopValid=mode==="long"?stop<entry:stop>entry;
+ const targetValid=mode==="long"?target>entry:target<entry;
+ if(!stopValid){clearResult(mode==="long"?"ロングでは、損切り価格はエントリー価格より下に設定してください。":"ショートでは、損切り価格はエントリー価格より上に設定してください。");return}
+ if(!targetValid){clearResult(mode==="long"?"ロングでは、利確目標はエントリー価格より上に設定してください。":"ショートでは、利確目標はエントリー価格より下に設定してください。");return}
+ const perLoss=stopD*fx*mult, perProfit=targetD*fx*mult, lots=Math.floor(risk/perLoss);
+ const actualLoss=lots*perLoss, actualProfit=lots*perProfit, rr=perProfit/perLoss;
+ q("lots").textContent=String(Math.max(0,lots));q("perLotLoss").textContent=fmt.format(perLoss)+"円";q("perLotProfit").textContent=fmt.format(perProfit)+"円";
+ q("actualLoss").textContent=fmt.format(actualLoss)+"円";q("actualProfit").textContent=fmt.format(actualProfit)+"円";q("rr").textContent="1 : "+rr.toFixed(2);
+ q("message").textContent=lots<1?"1枚でも許容損失を超えます。損切り位置を無理に近づけず、見送りや資金配分を再検討してください。":`最大 ${lots}枚。想定損失 約${fmt.format(actualLoss)}円、目標到達時の想定利益 約${fmt.format(actualProfit)}円。`;
+ q("message").className="note "+(lots<1?"warn":"ok");
+ let rows="";for(let i=1;i<=10;i++){rows+=`<tr><td>${i}枚</td><td>${fmt.format(i*perLoss)}円</td><td class="ok">${fmt.format(i*perProfit)}円</td></tr>`}q("rows").innerHTML=rows;
+}
+q("longBtn").addEventListener("click",()=>setMode("long"));q("shortBtn").addEventListener("click",()=>setMode("short"));
+["entry","stop","target","fx","risk","mult"].forEach(id=>q(id).addEventListener("input",render));
+q("reset").addEventListener("click",()=>{mode="short";q("entry").value=4357;q("stop").value=4388;q("target").value=4300;q("fx").value=160;q("risk").value=10000;q("mult").value=1;q("longBtn").classList.remove("active");q("shortBtn").classList.add("active");render()});
 if("serviceWorker"in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(()=>{}))}
 render();
 })();
